@@ -207,8 +207,8 @@ function parseMenuReport(html: string, location: string, meal: string, date: str
         fiber: parseNumber($(tds[8]).text()),
         sugar: parseNumber($(tds[9]).text()),
         sodium: parseNumber($(tds[6]).text()),
-        isVegetarian: !isMeat || lowerName.includes("vegetarian") || lowerName.includes("vegetable") || lowerName.includes("plant"),
-        isVegan: lowerName.includes("vegan") || lowerName.includes("plant based"),
+        isVegetarian: !isMeat,
+        isVegan: !isMeat && (lowerName.includes("vegan") || lowerName.includes("plant based")),
         isHalal: lowerName.includes("halal"),
         allergens: [],
       };
@@ -225,13 +225,25 @@ function containsMeat(name: string): boolean {
     "chicken", "beef", "pork", "bacon", "ham", "turkey", "sausage",
     "meat", "steak", "lamb", "fish", "salmon", "tuna", "shrimp",
     "prawn", "crab", "lobster", "duck", "veal", "pepperoni", "meatball",
-    "chorizo", "prosciutto", "salami", "bologna", "hotdog", "burger patty"
+    "chorizo", "prosciutto", "salami", "bologna", "hotdog", "burger patty",
+    "surimi", "anchovy", "anchovies", "sardine", "cod", "tilapia", "halibut",
+    "trout", "mackerel", "oyster", "clam", "mussel", "scallop", "calamari",
+    "squid", "octopus", "eel", "brisket", "ribs", "wings"
   ];
-  // Exclude items that are explicitly vegetarian/plant-based
-  if (name.includes("plant") || name.includes("vegetable") || name.includes("impossible") || name.includes("beyond")) {
-    return false;
+  
+  // Check for meat keywords first
+  const hasMeat = meatKeywords.some(meat => name.includes(meat));
+  
+  // Only return false (not meat) if item is explicitly plant-based AND doesn't contain meat
+  // This prevents "Chicken And Vegetable Dumplings" from being marked vegetarian
+  if (hasMeat) {
+    // Check if it's a plant-based meat alternative
+    const plantBasedIndicators = ["plant based", "plant-based", "impossible", "beyond", "vegan"];
+    const isPlantBased = plantBasedIndicators.some(indicator => name.includes(indicator));
+    return !isPlantBased;
   }
-  return meatKeywords.some(meat => name.includes(meat));
+  
+  return false;
 }
 
 export async function scrapeAllMenusForDate(date: string): Promise<DailyMenu> {
