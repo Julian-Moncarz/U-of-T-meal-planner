@@ -1,17 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
+import { MealSuggestionMVP, SelectedItem } from "@/lib/suggestions";
+import { LOCATIONS } from "@/types/menu";
 
 type MealType = "breakfast" | "lunch" | "dinner";
 
-interface MealData {
-  breakfast: string[];
-  lunch: string[];
-  dinner: string[];
-}
-
 interface MealAccordionProps {
-  meals: MealData;
+  meals: MealSuggestionMVP[];
+  locations: {
+    breakfast: string;
+    lunch: string;
+    dinner: string;
+  };
+  loading?: boolean;
 }
 
 const sectionTitles: Record<MealType, string> = {
@@ -20,82 +22,164 @@ const sectionTitles: Record<MealType, string> = {
   dinner: "Dinner",
 };
 
-export default function MealAccordion({ meals }: MealAccordionProps) {
-  const [openSection, setOpenSection] = useState<MealType | null>(null);
+function getLocationName(locationId: string): string {
+  const loc = LOCATIONS[locationId as keyof typeof LOCATIONS];
+  return loc ? loc.name : locationId;
+}
+
+function formatItemDisplay(selected: SelectedItem): string {
+  const { item, servings, displayQuantity } = selected;
+  if (servings > 1) {
+    return `${item.name} — ${displayQuantity}`;
+  }
+  return item.name;
+}
+
+function getCurrentMeal(): MealType {
+  const hour = new Date().getHours();
+  if (hour < 11) return "breakfast";
+  if (hour < 16) return "lunch";
+  return "dinner";
+}
+
+export default function MealAccordion({ meals, locations, loading }: MealAccordionProps) {
+  const [openSections, setOpenSections] = useState<Set<MealType>>(() => new Set([getCurrentMeal()]));
+  const dropdownRefs = useRef<Record<MealType, HTMLDivElement | null>>({
+    breakfast: null,
+    lunch: null,
+    dinner: null,
+  });
 
   const toggleSection = (section: MealType) => {
-    setOpenSection(openSection === section ? null : section);
+    setOpenSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(section)) {
+        next.delete(section);
+      } else {
+        next.add(section);
+      }
+      return next;
+    });
   };
 
-  const sections: MealType[] = ["breakfast", "lunch", "dinner"];
+  const mealTypes: MealType[] = ["breakfast", "lunch", "dinner"];
+
+  // Create a map for easy lookup
+  const mealMap = new Map<MealType, MealSuggestionMVP>();
+  for (const meal of meals) {
+    mealMap.set(meal.meal, meal);
+  }
+
+  if (loading) {
+    return (
+      <div className="w-full py-12 text-center">
+        <p
+          className="text-[17px] text-[#0D0D0D] opacity-50"
+          style={{ fontFamily: "var(--font-lato), Arial, sans-serif" }}
+        >
+          Loading your meal plan...
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full">
-      {sections.map((section) => (
-        <div key={section} className="border-b border-[var(--border-color)]">
-          <button
-            onClick={() => toggleSection(section)}
-            className="w-full flex items-center justify-between py-5 px-1 text-left transition-colors duration-200 hover:opacity-70"
-            aria-expanded={openSection === section}
-            aria-controls={`${section}-content`}
-          >
-            <span
-              className="font-serif-italic text-[28px] md:text-[32px] tracking-wide"
-              style={{
-                fontFamily: "var(--font-playfair), Georgia, serif",
-                fontStyle: "italic",
-                fontWeight: 400,
-              }}
-            >
-              {sectionTitles[section]}
-            </span>
-            <svg
-              className={`w-5 h-5 transition-transform duration-300 ease-in-out ${
-                openSection === section ? "rotate-180" : ""
-              }`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M19 9l-7 7-7-7"
-              />
-            </svg>
-          </button>
+      {mealTypes.map((mealType) => {
+        const meal = mealMap.get(mealType);
+        const locationId = locations[mealType];
+        const locationName = getLocationName(locationId);
+        const items = meal?.items || [];
+        const totals = meal?.totals || { calories: 0, protein: 0, carbs: 0, fat: 0 };
 
-          <div
-            id={`${section}-content`}
-            className={`overflow-hidden transition-all duration-300 ease-in-out ${
-              openSection === section
-                ? "max-h-96 opacity-100"
-                : "max-h-0 opacity-0"
-            }`}
-          >
-            <ul
-              className="pb-6 pl-5 space-y-3"
+        return (
+          <div key={mealType}>
+            <div className="flex items-baseline py-5 px-1">
+              <div className="flex items-baseline gap-1.5">
+                <button
+                  onClick={() => toggleSection(mealType)}
+                  className="text-left transition-opacity duration-200 hover:opacity-70"
+                  aria-expanded={openSections.has(mealType)}
+                  aria-controls={`${mealType}-content`}
+                >
+                  <span
+                    className="font-serif-italic text-[28px] md:text-[32px] tracking-wide text-[#0D0D0D]"
+                    style={{
+                      fontFamily: "var(--font-playfair), Georgia, serif",
+                      fontStyle: "italic",
+                      fontWeight: 500,
+                    }}
+                  >
+                    {sectionTitles[mealType]}
+                  </span>
+                </button>
+                <div
+                  className="relative"
+                  ref={(el) => { dropdownRefs.current[mealType] = el; }}
+                >
+                  <span
+                    className="text-[14px] md:text-[15px] text-[#0D0D0D] opacity-60"
+                    style={{
+                      fontFamily: "var(--font-lato), Arial, sans-serif",
+                      fontWeight: 400,
+                    }}
+                  >
+                    at {locationName}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div
+              id={`${mealType}-content`}
+              className="grid transition-[grid-template-rows] duration-500 ease-[cubic-bezier(0.4,0,0.2,1)]"
               style={{
-                fontFamily: "var(--font-lato), Arial, sans-serif",
-                fontWeight: 400,
-                fontSize: "17px",
-                lineHeight: 1.6,
+                gridTemplateRows: openSections.has(mealType) ? "1fr" : "0fr",
               }}
             >
-              {meals[section].map((item, index) => (
-                <li
-                  key={index}
-                  className="relative pl-4 before:content-[''] before:absolute before:left-0 before:top-[0.6em] before:w-1.5 before:h-1.5 before:rounded-full before:bg-[var(--foreground)] before:opacity-40"
+              <div className="overflow-hidden">
+                {items.length === 0 ? (
+                  <p
+                    className="pb-4 pl-5 text-[15px] opacity-50"
+                    style={{ fontFamily: "var(--font-lato), Arial, sans-serif" }}
+                  >
+                    No items available for this meal
+                  </p>
+                ) : (
+                  <ul
+                    className="pb-4 pl-5 space-y-3"
+                    style={{
+                      fontFamily: "var(--font-lato), Arial, sans-serif",
+                      fontWeight: 400,
+                      fontSize: "17px",
+                      lineHeight: 1.6,
+                    }}
+                  >
+                    {items.map((selected, index) => (
+                      <li
+                        key={`${selected.item.id}-${index}`}
+                        className="relative pl-4 before:content-[''] before:absolute before:left-0 before:top-[0.6em] before:w-1.5 before:h-1.5 before:rounded-full before:bg-[var(--foreground)] before:opacity-40"
+                      >
+                        {formatItemDisplay(selected)}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div
+                  className="pb-6 pl-5 text-[15px]"
+                  style={{
+                    fontFamily: "var(--font-lato), Arial, sans-serif",
+                  }}
                 >
-                  {item}
-                </li>
-              ))}
-            </ul>
+                  <span className="text-[#0D0D0D] opacity-60">
+                    {Math.round(totals.calories)} cal · {Math.round(totals.protein)}g protein
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

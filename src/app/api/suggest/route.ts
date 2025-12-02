@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { scrapeAllMenusForDate, scrapeMenuForToday } from "@/lib/scraper";
-import { generateDailySuggestion } from "@/lib/suggestions";
+import { generateDailySuggestionMVP } from "@/lib/suggestions";
 import { UserPreferences } from "@/types/menu";
 
 export async function POST(request: Request) {
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
       ? await scrapeAllMenusForDate(date)
       : await scrapeMenuForToday();
     
-    const suggestion = generateDailySuggestion(menu, preferences);
+    const suggestion = generateDailySuggestionMVP(menu, preferences);
     
     return NextResponse.json(suggestion);
   } catch (error) {
