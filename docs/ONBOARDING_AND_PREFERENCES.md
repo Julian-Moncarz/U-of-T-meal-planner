@@ -1,5 +1,9 @@
 # User Onboarding & Preferences System
 
+## Status: Implemented ✓
+
+The onboarding flow is fully implemented in `/src/app/onboarding/page.tsx`.
+
 ## Overview
 How the app learns what users like to eat and generates personalized meal plans.
 
@@ -143,41 +147,28 @@ When user taps an item, show alternatives that still keep them on track for macr
 
 ## Data Model
 
-### Current UserPreferences (in types/menu.ts)
+### UserPreferences (in types/menu.ts)
 ```typescript
 interface UserPreferences {
+  // Macro targets
   targetCalories: number;
   targetProtein: number;
   targetCarbs: number;
   targetFat: number;
+  
+  // Dining locations
   breakfastLocation: string;
   lunchLocation: string;
   dinnerLocation: string;
+  
+  // Dietary restrictions
   dietaryFilter: "all" | "vegetarian" | "vegan";
   excludedAllergens: string[];
-}
-```
-
-### Proposed Additions
-```typescript
-interface UserPreferences {
-  // ... existing fields ...
+  excludedProteins: string[];  // ["fish", "pork", "tofu", "shellfish", ...]
+  isHalal: boolean;
   
   // Body stats (optional - if they used calculator)
-  bodyStats?: {
-    weight: number;      // lbs
-    height: number;      // inches
-    age: number;
-    sex: "male" | "female";
-    activityLevel: "sedentary" | "light" | "moderate" | "active" | "very_active";
-    goal: "lose" | "maintain" | "gain";
-  };
-  
-  // Protein exclusions
-  excludedProteins: string[];  // ["fish", "pork", "tofu", "shellfish", ...]
-  
-  // Halal preference
-  isHalal: boolean;
+  bodyStats?: BodyStats;
   
   // Preference learning
   likedItemIds: string[];      // from onboarding + kept items
@@ -230,3 +221,34 @@ Chicken, beef, pork, fish (salmon, tuna), tofu, eggs, plant-based alternatives (
 - Store progress in component state during flow
 - Only persist to localStorage on final screen completion
 - Allow back navigation without losing progress
+
+---
+
+## MVP Recommendation Algorithm
+
+Implemented in `src/lib/suggestions.ts` (`generateDailySuggestionMVP`).
+
+### Algorithm
+1. **Pick 1 main protein item** per meal
+   - Filter by user's dietary restrictions (vegan/vegetarian, halal, excluded proteins)
+   - Prefer items from user's liked items list
+   - Select from main categories: Bowls, Burritos, Grill, Entrees
+   - Choose highest protein density item
+
+2. **Calculate servings needed**
+   - Target ~80% of per-meal protein goal with the main item
+   - Round up servings (e.g., 1.2 → 2 servings)
+
+3. **Add a side**
+   - Pick from Salad Bar or Soup
+   - Single serving
+
+4. **Display quantities**
+   - Format: "300g (~2 cups)" or "2x slices"
+   - Uses `formatServingSize()` for mass-to-volume conversion
+
+### Time-Based Default Meal
+The MealAccordion opens the current meal based on time of day:
+- Before 11am → Breakfast
+- 11am-4pm → Lunch
+- After 4pm → Dinner
