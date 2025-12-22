@@ -1,110 +1,71 @@
+"use server";
+
 import Anthropic from "@anthropic-ai/sdk";
 import { MenuItem, UserPreferences, DailyMenu } from "@/types/menu";
+import type { SelectedItem, MealSuggestion, DailySuggestion } from "./mealTypes";
+import { formatServingSize } from "./mealTypes";
 
-const anthropic = new Anthropic();
 const MODEL = "claude-haiku-4-5-20251001";
 
 // ============================================================================
-// Types
+// Location Availability Check
 // ============================================================================
 
-export interface SelectedItem {
-  item: MenuItem;
-  servings: number;
-  displayQuantity: string;
-}
-
-export interface MealSuggestion {
+export interface ClosedLocation {
   meal: "breakfast" | "lunch" | "dinner";
-  items: SelectedItem[];
-  totals: {
-    calories: number;
-    protein: number;
-    carbs: number;
-    fat: number;
-  };
+  locationId: string;
 }
 
-export interface DailySuggestion {
-  date: string;
-  meals: MealSuggestion[];
-  dailyTotals: {
-    calories: number;
-    protein: number;
-    carbs: number;
-    fat: number;
-  };
+export interface LocationAvailability {
+  available: boolean;
+  closedLocations: ClosedLocation[];
+  availableLocations: string[];
 }
 
-// ============================================================================
-// Shared Constants & Utilities
-// ============================================================================
+export async function checkLocationAvailability(
+  menu: DailyMenu,
+  prefs: UserPreferences
+): Promise<LocationAvailability> {
+  const closedLocations: ClosedLocation[] = [];
+  const availableLocations = new Set<string>();
 
-const PROTEIN_KEYWORDS: Record<string, string[]> = {
-  fish: ["fish", "salmon", "tuna", "cod", "tilapia", "halibut", "trout", "mackerel", "sardine", "anchovy"],
-  pork: ["pork", "bacon", "ham", "sausage", "pepperoni", "prosciutto", "chorizo"],
-  beef: ["beef", "steak", "burger", "brisket", "meatball"],
-  shellfish: ["shrimp", "prawn", "crab", "lobster", "oyster", "clam", "mussel", "scallop", "calamari", "squid"],
-  tofu: ["tofu"],
-  lamb: ["lamb"],
-};
+  // Check each meal's location
+  const mealLocations = [
+    { meal: "breakfast" as const, locationId: prefs.breakfastLocation },
+    { meal: "lunch" as const, locationId: prefs.lunchLocation },
+    { meal: "dinner" as const, locationId: prefs.dinnerLocation },
+  ];
 
-function containsExcludedProtein(itemName: string, excludedProteins: string[]): boolean {
-  const lowerName = itemName.toLowerCase();
-  for (const protein of excludedProteins) {
-    const keywords = PROTEIN_KEYWORDS[protein];
-    if (keywords && keywords.some(keyword => lowerName.includes(keyword))) {
-      return true;
+  for (const { meal, locationId } of mealLocations) {
+    const location = menu.locations[locationId];
+    const hasItems = location?.meals[meal]?.length > 0;
+
+    if (!hasItems) {
+      closedLocations.push({ meal, locationId });
     }
   }
-  return false;
-}
 
-function validateItemAgainstPrefs(item: MenuItem, prefs: UserPreferences): boolean {
-  if (prefs.dietaryFilter === "vegetarian" && !item.isVegetarian) return false;
-  if (prefs.dietaryFilter === "vegan" && !item.isVegan) return false;
-  // Halal: item is safe if explicitly halal OR vegetarian/vegan
-  if (prefs.isHalal && !item.isHalal && !item.isVegetarian && !item.isVegan) return false;
-  for (const allergen of prefs.excludedAllergens) {
-    if (item.allergens.includes(allergen)) return false;
-  }
-  if (containsExcludedProtein(item.name, prefs.excludedProteins)) return false;
-  return true;
-}
-
-export function formatServingSize(item: MenuItem, servings: number): string {
-  const servingSize = item.servingSize.toLowerCase();
-
-  if (servingSize.includes("each") || servingSize.includes("slice") || servingSize.includes("piece")) {
-    return servings === 1 ? "1" : `${servings}x`;
+  // Find which locations ARE available
+  for (const [locId, location] of Object.entries(menu.locations)) {
+    const hasMeals = Object.values(location.meals).some(items => items.length > 0);
+    if (hasMeals) {
+      availableLocations.add(locId);
+    }
   }
 
-  const massMatch = item.servingSize.match(/(\d+)\s*g/i);
-  if (massMatch) {
-    const gramsPerServing = parseInt(massMatch[1]);
-    const totalGrams = gramsPerServing * servings;
-    const volumeStr = massToVolume(totalGrams, item.category);
-    return `${totalGrams}g (${volumeStr})`;
-  }
-
-  return servings === 1 ? item.servingSize : `${servings}x ${item.servingSize}`;
+  return {
+    available: closedLocations.length === 0,
+    closedLocations,
+    availableLocations: Array.from(availableLocations),
+  };
 }
 
-function massToVolume(grams: number, category: string): string {
-  let gramsPerCup = 150;
-  const lowerCat = category.toLowerCase();
-  if (lowerCat.includes("salad")) gramsPerCup = 50;
-  else if (lowerCat.includes("rice") || lowerCat.includes("grain") || lowerCat.includes("cereal")) gramsPerCup = 180;
-  else if (lowerCat.includes("soup")) gramsPerCup = 240;
-
-  const cups = grams / gramsPerCup;
-  if (cups < 0.3) return "~1/4 cup";
-  if (cups < 0.6) return "~1/2 cup";
-  if (cups < 0.9) return "~3/4 cup";
-  if (cups < 1.3) return "~1 cup";
-  if (cups < 1.7) return "~1.5 cups";
-  if (cups < 2.3) return "~2 cups";
-  return `~${Math.round(cups)} cups`;
+let _anthropic: Anthropic | null = null;
+function getClient(): Anthropic {
+  if (!_anthropic) {
+    _anthropic = new Anthropic();
+  }
+  return _anthropic;
 }
 
 // ============================================================================
@@ -145,19 +106,8 @@ function buildMenuContext(menu: DailyMenu, prefs: UserPreferences): string {
     context += `\n## ${mealType.toUpperCase()} at ${location.name}\n`;
 
     for (const item of items) {
-      // Skip items that don't meet preferences
-      if (!validateItemAgainstPrefs(item, prefs)) continue;
-
       context += `- ID: "${item.id}" | ${item.name} | `;
-      context += `${item.calories}cal, ${item.protein}g protein per ${item.servingSize}`;
-
-      const flags: string[] = [];
-      if (item.isVegetarian) flags.push("V");
-      if (item.isVegan) flags.push("VG");
-      if (item.isHalal) flags.push("H");
-      if (flags.length > 0) context += ` [${flags.join(",")}]`;
-
-      context += "\n";
+      context += `${item.calories}cal, ${item.protein}g protein per ${item.servingSize}\n`;
     }
   }
 
@@ -170,17 +120,8 @@ DAILY TARGETS: ${prefs.targetCalories} cal, ${prefs.targetProtein}g protein
 MEAL DISTRIBUTION: breakfast 25%, lunch 35%, dinner 40%
 `;
 
-  const restrictions: string[] = [];
-  if (prefs.dietaryFilter !== "all") restrictions.push(prefs.dietaryFilter);
-  if (prefs.isHalal) restrictions.push("halal");
-  if (prefs.excludedProteins.length > 0) restrictions.push(`no ${prefs.excludedProteins.join("/")}`);
-
-  if (restrictions.length > 0) {
-    context += `RESTRICTIONS: ${restrictions.join(", ")}\n`;
-  }
-
-  if (prefs.likedItemIds.length > 0) {
-    context += `PREFERRED ITEMS: ${prefs.likedItemIds.slice(0, 5).join(", ")}\n`;
+  if (prefs.dietaryPreferences && prefs.dietaryPreferences.trim()) {
+    context += `\nUSER PREFERENCES: ${prefs.dietaryPreferences}\n`;
   }
 
   return context;
@@ -200,7 +141,7 @@ RULES:
 1. ONLY use exact item IDs from the menu - never invent items
 2. Select 1-3 items per meal with servings 1-5
 3. Prioritize hitting protein targets
-4. Respect all dietary restrictions (items shown are already filtered)
+4. STRICTLY respect user dietary preferences based on item names. For vegetarian users, avoid meat/fish/poultry. For vegan users, avoid all animal products. For halal users, avoid pork and non-halal meat. Use your knowledge of food to make appropriate selections.
 
 Return ONLY valid JSON matching this schema:
 {
@@ -219,7 +160,7 @@ Return ONLY valid JSON matching this schema:
 
   userPrompt += `\n\nCreate a meal plan. Return ONLY JSON.`;
 
-  const response = await anthropic.messages.create({
+  const response = await getClient().messages.create({
     model: MODEL,
     max_tokens: 2000,
     system: systemPrompt,
@@ -241,13 +182,18 @@ Return ONLY valid JSON matching this schema:
     throw new Error(`Failed to parse response: ${e}`);
   }
 
-  return convertPlanToSuggestion(plan, menu, prefs);
+  // Validate the response structure
+  if (!plan || !plan.meals || !Array.isArray(plan.meals)) {
+    console.error("Invalid LLM response structure:", plan);
+    throw new Error("LLM returned invalid meal plan structure");
+  }
+
+  return convertPlanToSuggestion(plan, menu);
 }
 
 function convertPlanToSuggestion(
   plan: LLMDailyPlan,
-  menu: DailyMenu,
-  prefs: UserPreferences
+  menu: DailyMenu
 ): DailySuggestion {
   // Build item lookup
   const itemLookup = new Map<string, MenuItem>();
@@ -279,11 +225,6 @@ function convertPlanToSuggestion(
       const menuItem = itemLookup.get(llmItem.itemId);
       if (!menuItem) {
         console.warn(`LLM selected non-existent item: ${llmItem.itemId}`);
-        continue;
-      }
-
-      if (!validateItemAgainstPrefs(menuItem, prefs)) {
-        console.warn(`LLM selected invalid item: ${menuItem.name}`);
         continue;
       }
 

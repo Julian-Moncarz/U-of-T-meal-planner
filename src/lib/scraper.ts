@@ -10,7 +10,7 @@ interface MenuReportInfo {
   meal: string;
 }
 
-function parseNumber(value: string): number {
+export function parseNumber(value: string): number {
   const cleaned = value.replace(/,/g, "").trim();
   const num = parseFloat(cleaned);
   return isNaN(num) ? 0 : num;
@@ -20,7 +20,7 @@ function generateItemId(name: string, location: string, meal: string, date: stri
   return `${date}-${location}-${meal}-${name}`.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
 }
 
-function normalizeMeal(meal: string): "breakfast" | "lunch" | "dinner" {
+export function normalizeMeal(meal: string): "breakfast" | "lunch" | "dinner" {
   const lower = meal.toLowerCase();
   if (lower.includes("breakfast")) return "breakfast";
   if (lower.includes("lunch")) return "lunch";
@@ -157,6 +157,7 @@ async function fetchMenuReport(reportId: string): Promise<string> {
     headers: {
       "User-Agent": "Mozilla/5.0 (compatible; UofT Meal Planner)",
       "Content-Type": "application/x-www-form-urlencoded",
+      "Content-Length": "0",
     },
     body: "",
   });
@@ -187,11 +188,9 @@ function parseMenuReport(html: string, location: string, meal: string, date: str
     if (descCell.length > 0) {
       const name = descCell.text().trim();
       if (!name) return;
-      
+
       const tds = $(row).find("td");
-      const lowerName = name.toLowerCase();
-      const isMeat = containsMeat(lowerName);
-      
+
       const item: MenuItem = {
         id: generateItemId(name, location, meal, date),
         name,
@@ -207,43 +206,14 @@ function parseMenuReport(html: string, location: string, meal: string, date: str
         fiber: parseNumber($(tds[8]).text()),
         sugar: parseNumber($(tds[9]).text()),
         sodium: parseNumber($(tds[6]).text()),
-        isVegetarian: !isMeat,
-        isVegan: !isMeat && (lowerName.includes("vegan") || lowerName.includes("plant based")),
-        isHalal: lowerName.includes("halal"),
         allergens: [],
       };
-      
+
       items.push(item);
     }
   });
   
   return items;
-}
-
-function containsMeat(name: string): boolean {
-  const meatKeywords = [
-    "chicken", "beef", "pork", "bacon", "ham", "turkey", "sausage",
-    "meat", "steak", "lamb", "fish", "salmon", "tuna", "shrimp",
-    "prawn", "crab", "lobster", "duck", "veal", "pepperoni", "meatball",
-    "chorizo", "prosciutto", "salami", "bologna", "hotdog", "burger patty",
-    "surimi", "anchovy", "anchovies", "sardine", "cod", "tilapia", "halibut",
-    "trout", "mackerel", "oyster", "clam", "mussel", "scallop", "calamari",
-    "squid", "octopus", "eel", "brisket", "ribs", "wings"
-  ];
-  
-  // Check for meat keywords first
-  const hasMeat = meatKeywords.some(meat => name.includes(meat));
-  
-  // Only return false (not meat) if item is explicitly plant-based AND doesn't contain meat
-  // This prevents "Chicken And Vegetable Dumplings" from being marked vegetarian
-  if (hasMeat) {
-    // Check if it's a plant-based meat alternative
-    const plantBasedIndicators = ["plant based", "plant-based", "impossible", "beyond", "vegan"];
-    const isPlantBased = plantBasedIndicators.some(indicator => name.includes(indicator));
-    return !isPlantBased;
-  }
-  
-  return false;
 }
 
 export async function scrapeAllMenusForDate(date: string): Promise<DailyMenu> {
@@ -285,24 +255,4 @@ export async function scrapeAllMenusForDate(date: string): Promise<DailyMenu> {
 export async function scrapeMenuForToday(): Promise<DailyMenu> {
   const today = new Date().toISOString().split("T")[0];
   return scrapeAllMenusForDate(today);
-}
-
-export async function scrapeMenusForWeek(): Promise<DailyMenu[]> {
-  const menus: DailyMenu[] = [];
-  const today = new Date();
-  
-  for (let i = 0; i < 7; i++) {
-    const date = new Date(today);
-    date.setDate(date.getDate() + i);
-    const dateStr = date.toISOString().split("T")[0];
-    
-    try {
-      const menu = await scrapeAllMenusForDate(dateStr);
-      menus.push(menu);
-    } catch (error) {
-      console.error(`Failed to scrape menu for ${dateStr}:`, error);
-    }
-  }
-  
-  return menus;
 }

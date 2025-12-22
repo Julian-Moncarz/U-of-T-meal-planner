@@ -6,12 +6,13 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "vitest",
+    "test:run": "vitest run"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
     "cheerio": "^1.1.2",
-    "dotenv": "^17.2.3",
     "next": "^16.0.7",
     "react": "19.2.0",
     "react-dom": "19.2.0"
@@ -21,10 +22,12 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^5.1.2",
     "eslint": "^9",
     "eslint-config-next": "^16.0.7",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.0.16"
   }
 }

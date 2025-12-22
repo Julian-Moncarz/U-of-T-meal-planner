@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { MealSuggestion, SelectedItem } from "@/lib/llmSuggestions";
-import { LOCATIONS, MenuItem, UserPreferences } from "@/types/menu";
-import SwapModal from "./SwapModal";
+import { useState } from "react";
+import { MealSuggestion, SelectedItem } from "@/lib/mealTypes";
+import { LOCATIONS } from "@/types/menu";
 
 type MealType = "breakfast" | "lunch" | "dinner";
 
@@ -15,8 +14,6 @@ interface MealAccordionProps {
     dinner: string;
   };
   loading?: boolean;
-  preferences?: UserPreferences;
-  onSwap?: (mealType: MealType, oldItem: SelectedItem, newItem: MenuItem) => void;
 }
 
 const sectionTitles: Record<MealType, string> = {
@@ -45,33 +42,8 @@ function getCurrentMeal(): MealType {
   return "dinner";
 }
 
-export default function MealAccordion({ meals, locations, loading, preferences, onSwap }: MealAccordionProps) {
+export default function MealAccordion({ meals, locations, loading }: MealAccordionProps) {
   const [openSections, setOpenSections] = useState<Set<MealType>>(() => new Set([getCurrentMeal()]));
-  const [swapModalOpen, setSwapModalOpen] = useState(false);
-  const [swapContext, setSwapContext] = useState<{
-    item: SelectedItem;
-    mealType: MealType;
-    locationId: string;
-  } | null>(null);
-  const dropdownRefs = useRef<Record<MealType, HTMLDivElement | null>>({
-    breakfast: null,
-    lunch: null,
-    dinner: null,
-  });
-
-  const handleItemClick = (item: SelectedItem, mealType: MealType, locationId: string) => {
-    if (!preferences || !onSwap) return;
-    setSwapContext({ item, mealType, locationId });
-    setSwapModalOpen(true);
-  };
-
-  const handleSwapConfirm = (newItem: MenuItem) => {
-    if (swapContext && onSwap) {
-      onSwap(swapContext.mealType, swapContext.item, newItem);
-    }
-    setSwapModalOpen(false);
-    setSwapContext(null);
-  };
 
   const toggleSection = (section: MealType) => {
     setOpenSections((prev) => {
@@ -92,7 +64,7 @@ export default function MealAccordion({ meals, locations, loading, preferences, 
   for (const meal of meals) {
     mealMap.set(meal.meal, meal);
   }
-  
+
   if (loading) {
     return (
       <div className="w-full py-12 text-center">
@@ -136,20 +108,15 @@ export default function MealAccordion({ meals, locations, loading, preferences, 
                     {sectionTitles[mealType]}
                   </span>
                 </button>
-                <div
-                  className="relative"
-                  ref={(el) => { dropdownRefs.current[mealType] = el; }}
+                <span
+                  className="text-[14px] md:text-[15px] text-[#0D0D0D] opacity-60"
+                  style={{
+                    fontFamily: "var(--font-lato), Arial, sans-serif",
+                    fontWeight: 400,
+                  }}
                 >
-                  <span
-                    className="text-[14px] md:text-[15px] text-[#0D0D0D] opacity-60"
-                    style={{
-                      fontFamily: "var(--font-lato), Arial, sans-serif",
-                      fontWeight: 400,
-                    }}
-                  >
-                    at {locationName}
-                  </span>
-                </div>
+                  at {locationName}
+                </span>
               </div>
             </div>
 
@@ -163,14 +130,14 @@ export default function MealAccordion({ meals, locations, loading, preferences, 
               <div className="overflow-hidden">
                 {items.length === 0 ? (
                   <p
-                    className="pb-4 pl-5 text-[15px] opacity-50"
+                    className="pb-6 pl-5 text-[15px] opacity-50"
                     style={{ fontFamily: "var(--font-lato), Arial, sans-serif" }}
                   >
                     No items available for this meal
                   </p>
                 ) : (
                   <ul
-                    className="pb-4 pl-5 space-y-3"
+                    className="pb-6 pl-5 space-y-3"
                     style={{
                       fontFamily: "var(--font-lato), Arial, sans-serif",
                       fontWeight: 400,
@@ -181,46 +148,18 @@ export default function MealAccordion({ meals, locations, loading, preferences, 
                     {items.map((selected, index) => (
                       <li
                         key={`${selected.item.id}-${index}`}
-                        onClick={() => handleItemClick(selected, mealType, locationId)}
-                        className={`relative pl-4 before:content-[''] before:absolute before:left-0 before:top-[0.6em] before:w-1.5 before:h-1.5 before:rounded-full before:bg-[var(--foreground)] before:opacity-40 ${
-                          preferences && onSwap ? "cursor-pointer hover:opacity-70 transition-opacity" : ""
-                        }`}
+                        className="relative pl-4 before:content-[''] before:absolute before:left-0 before:top-[0.6em] before:w-1.5 before:h-1.5 before:rounded-full before:bg-[var(--foreground)] before:opacity-40"
                       >
                         {formatItemDisplay(selected)}
                       </li>
                     ))}
                   </ul>
                 )}
-                <div
-                  className="pb-6 pl-5 text-[15px]"
-                  style={{
-                    fontFamily: "var(--font-lato), Arial, sans-serif",
-                  }}
-                >
-                  <span className="text-[#0D0D0D] opacity-60">
-                    {Math.round(totals.calories)} cal · {Math.round(totals.protein)}g protein
-                  </span>
-                </div>
               </div>
             </div>
           </div>
         );
       })}
-
-      {swapContext && preferences && (
-        <SwapModal
-          isOpen={swapModalOpen}
-          onClose={() => {
-            setSwapModalOpen(false);
-            setSwapContext(null);
-          }}
-          currentItem={swapContext.item}
-          mealType={swapContext.mealType}
-          locationId={swapContext.locationId}
-          preferences={preferences}
-          onSwap={handleSwapConfirm}
-        />
-      )}
     </div>
   );
 }
