@@ -141,7 +141,8 @@ RULES:
 1. ONLY use exact item IDs from the menu - never invent items
 2. Select 1-3 items per meal with servings 1-5
 3. Prioritize hitting protein targets
-4. STRICTLY respect user dietary preferences based on item names. For vegetarian users, avoid meat/fish/poultry. For vegan users, avoid all animal products. For halal users, avoid pork and non-halal meat. Use your knowledge of food to make appropriate selections.
+4. Stay within 10% of daily calorie and protein targets - don't exceed or fall short by more than this
+5. STRICTLY respect user dietary preferences based on item names. For vegetarian users, avoid meat/fish/poultry. For vegan users, avoid all animal products. For halal users, avoid pork and non-halal meat. Use your knowledge of food to make appropriate selections.
 
 Return ONLY valid JSON matching this schema:
 {
