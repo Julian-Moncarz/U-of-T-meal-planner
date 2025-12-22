@@ -24,11 +24,6 @@ export default function SettingsPage() {
     router.refresh();
   };
 
-  const handleResetOnboarding = () => {
-    localStorage.removeItem("mealPlannerPreferences");
-    router.push("/onboarding");
-  };
-
   if (!mounted) {
     return (
       <main className="h-screen w-screen flex items-center justify-center">
@@ -157,16 +152,6 @@ export default function SettingsPage() {
             </button>
           </div>
 
-          {/* Reset Onboarding */}
-          <div className="mt-12 pt-8 border-t border-[#E5E5E5]">
-            <button
-              onClick={handleResetOnboarding}
-              className="w-full px-4 py-3 text-[14px] text-red-600 opacity-60 hover:opacity-100 transition-opacity"
-              style={{ fontFamily: "var(--font-lato)" }}
-            >
-              Reset and start over
-            </button>
-          </div>
         </div>
       </div>
     </main>
