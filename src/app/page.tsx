@@ -3,8 +3,8 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import MealAccordion from "@/components/MealAccordion";
-import { UserPreferences } from "@/types/menu";
-import { DailySuggestionMVP } from "@/lib/suggestions";
+import { UserPreferences, MenuItem } from "@/types/menu";
+import { DailySuggestionMVP, SelectedItem, formatServingSize } from "@/lib/suggestions";
 
 const DEFAULT_PREFERENCES: UserPreferences = {
   targetCalories: 2500,
@@ -68,6 +68,74 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const handleSwap = (
+    mealType: "breakfast" | "lunch" | "dinner",
+    oldItem: SelectedItem,
+    newItem: MenuItem
+  ) => {
+    if (!suggestion || !preferences) return;
+
+    // Create updated meals with the swapped item
+    const updatedMeals = suggestion.meals.map((meal) => {
+      if (meal.meal !== mealType) {
+        return { ...meal, items: [...meal.items], totals: { ...meal.totals } };
+      }
+      
+      const updatedItems = meal.items.map((item) => {
+        // Match by item name (more reliable than ID which changes daily)
+        if (item.item.name === oldItem.item.name) {
+          return {
+            item: { ...newItem },
+            servings: 1,
+            displayQuantity: formatServingSize(newItem, 1),
+          };
+        }
+        return { ...item, item: { ...item.item } };
+      });
+      
+      const newTotals = updatedItems.reduce(
+        (acc, { item, servings }) => ({
+          calories: acc.calories + item.calories * servings,
+          protein: acc.protein + item.protein * servings,
+          carbs: acc.carbs + item.carbs * servings,
+          fat: acc.fat + item.fat * servings,
+        }),
+        { calories: 0, protein: 0, carbs: 0, fat: 0 }
+      );
+      
+      return { ...meal, meal: meal.meal, items: updatedItems, totals: newTotals };
+    });
+    
+    const newDailyTotals = updatedMeals.reduce(
+      (acc, meal) => ({
+        calories: acc.calories + meal.totals.calories,
+        protein: acc.protein + meal.totals.protein,
+        carbs: acc.carbs + meal.totals.carbs,
+        fat: acc.fat + meal.totals.fat,
+      }),
+      { calories: 0, protein: 0, carbs: 0, fat: 0 }
+    );
+    
+    // Set new suggestion object
+    const newSuggestion: DailySuggestionMVP = {
+      date: suggestion.date,
+      meals: updatedMeals,
+      dailyTotals: newDailyTotals,
+    };
+    
+    setSuggestion(newSuggestion);
+
+    // Update preferences with liked item
+    const updatedPrefs = {
+      ...preferences,
+      likedItemIds: preferences.likedItemIds.includes(newItem.id)
+        ? preferences.likedItemIds
+        : [...preferences.likedItemIds, newItem.id],
+    };
+    setPreferences(updatedPrefs);
+    localStorage.setItem("mealPlannerPreferences", JSON.stringify(updatedPrefs));
+  };
+
   // Check onboarding and load preferences
   useEffect(() => {
     const stored = getStoredPreferences();
@@ -78,9 +146,11 @@ export default function Home() {
     setPreferences(stored);
   }, [router]);
 
-  // Fetch suggestions when preferences are loaded
+  // Fetch suggestions only on initial load (not when preferences update for likes)
+  const [hasFetchedSuggestions, setHasFetchedSuggestions] = useState(false);
+  
   useEffect(() => {
-    if (!preferences) return;
+    if (!preferences || hasFetchedSuggestions) return;
 
     const fetchSuggestions = async () => {
       setLoading(true);
@@ -100,6 +170,7 @@ export default function Home() {
         
         const data = await response.json();
         setSuggestion(data as DailySuggestionMVP);
+        setHasFetchedSuggestions(true);
       } catch (err) {
         setError(err instanceof Error ? err.message : "An error occurred");
       } finally {
@@ -108,7 +179,7 @@ export default function Home() {
     };
 
     fetchSuggestions();
-  }, [preferences]);
+  }, [preferences, hasFetchedSuggestions]);
 
   // Show nothing while checking onboarding
   if (!preferences) {
@@ -129,6 +200,16 @@ export default function Home() {
         <DecorativeCorner position="top-right" />
         <DecorativeCorner position="bottom-left" />
         <DecorativeCorner position="bottom-right" />
+        <button
+          onClick={() => router.push("/settings")}
+          className="absolute top-4 right-4 p-2 border border-[#1A1A1A] hover:bg-[#1A1A1A] hover:text-white transition-colors z-20"
+          aria-label="Settings"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+        </button>
         <div className="relative h-full overflow-y-auto px-6 py-8 max-w-md mx-auto">
           {error ? (
             <div className="text-center py-12">
@@ -148,6 +229,7 @@ export default function Home() {
             </div>
           ) : (
             <MealAccordion
+              key={suggestion?.meals.map(m => m.items.map(i => i.item.id).join(',')).join('|') || 'empty'}
               meals={suggestion?.meals || []}
               locations={{
                 breakfast: preferences.breakfastLocation,
@@ -155,6 +237,8 @@ export default function Home() {
                 dinner: preferences.dinnerLocation,
               }}
               loading={loading}
+              preferences={preferences}
+              onSwap={handleSwap}
             />
           )}
           

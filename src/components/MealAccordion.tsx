@@ -2,7 +2,8 @@
 
 import { useState, useRef } from "react";
 import { MealSuggestionMVP, SelectedItem } from "@/lib/suggestions";
-import { LOCATIONS } from "@/types/menu";
+import { LOCATIONS, MenuItem, UserPreferences } from "@/types/menu";
+import SwapModal from "./SwapModal";
 
 type MealType = "breakfast" | "lunch" | "dinner";
 
@@ -14,6 +15,8 @@ interface MealAccordionProps {
     dinner: string;
   };
   loading?: boolean;
+  preferences?: UserPreferences;
+  onSwap?: (mealType: MealType, oldItem: SelectedItem, newItem: MenuItem) => void;
 }
 
 const sectionTitles: Record<MealType, string> = {
@@ -42,13 +45,33 @@ function getCurrentMeal(): MealType {
   return "dinner";
 }
 
-export default function MealAccordion({ meals, locations, loading }: MealAccordionProps) {
+export default function MealAccordion({ meals, locations, loading, preferences, onSwap }: MealAccordionProps) {
   const [openSections, setOpenSections] = useState<Set<MealType>>(() => new Set([getCurrentMeal()]));
+  const [swapModalOpen, setSwapModalOpen] = useState(false);
+  const [swapContext, setSwapContext] = useState<{
+    item: SelectedItem;
+    mealType: MealType;
+    locationId: string;
+  } | null>(null);
   const dropdownRefs = useRef<Record<MealType, HTMLDivElement | null>>({
     breakfast: null,
     lunch: null,
     dinner: null,
   });
+
+  const handleItemClick = (item: SelectedItem, mealType: MealType, locationId: string) => {
+    if (!preferences || !onSwap) return;
+    setSwapContext({ item, mealType, locationId });
+    setSwapModalOpen(true);
+  };
+
+  const handleSwapConfirm = (newItem: MenuItem) => {
+    if (swapContext && onSwap) {
+      onSwap(swapContext.mealType, swapContext.item, newItem);
+    }
+    setSwapModalOpen(false);
+    setSwapContext(null);
+  };
 
   const toggleSection = (section: MealType) => {
     setOpenSections((prev) => {
@@ -69,7 +92,7 @@ export default function MealAccordion({ meals, locations, loading }: MealAccordi
   for (const meal of meals) {
     mealMap.set(meal.meal, meal);
   }
-
+  
   if (loading) {
     return (
       <div className="w-full py-12 text-center">
@@ -158,7 +181,10 @@ export default function MealAccordion({ meals, locations, loading }: MealAccordi
                     {items.map((selected, index) => (
                       <li
                         key={`${selected.item.id}-${index}`}
-                        className="relative pl-4 before:content-[''] before:absolute before:left-0 before:top-[0.6em] before:w-1.5 before:h-1.5 before:rounded-full before:bg-[var(--foreground)] before:opacity-40"
+                        onClick={() => handleItemClick(selected, mealType, locationId)}
+                        className={`relative pl-4 before:content-[''] before:absolute before:left-0 before:top-[0.6em] before:w-1.5 before:h-1.5 before:rounded-full before:bg-[var(--foreground)] before:opacity-40 ${
+                          preferences && onSwap ? "cursor-pointer hover:opacity-70 transition-opacity" : ""
+                        }`}
                       >
                         {formatItemDisplay(selected)}
                       </li>
@@ -180,6 +206,21 @@ export default function MealAccordion({ meals, locations, loading }: MealAccordi
           </div>
         );
       })}
+
+      {swapContext && preferences && (
+        <SwapModal
+          isOpen={swapModalOpen}
+          onClose={() => {
+            setSwapModalOpen(false);
+            setSwapContext(null);
+          }}
+          currentItem={swapContext.item}
+          mealType={swapContext.mealType}
+          locationId={swapContext.locationId}
+          preferences={preferences}
+          onSwap={handleSwapConfirm}
+        />
+      )}
     </div>
   );
 }

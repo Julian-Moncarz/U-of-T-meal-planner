@@ -147,6 +147,11 @@ function isSideCategory(category: string): boolean {
   );
 }
 
+// Protein density thresholds (protein per calorie)
+const GOOD_PROTEIN_DENSITY = 0.04;   // 4g protein per 100 cal - good protein source
+const MIN_PROTEIN_DENSITY = 0.025;   // 2.5g protein per 100 cal - acceptable
+const MIN_ITEM_CALORIES = 30;        // Filter out sauces/condiments
+
 function calculateProteinDensity(item: MenuItem): number {
   if (item.calories === 0) return 0;
   return item.protein / item.calories;
@@ -167,20 +172,35 @@ function selectMealItemsMVP(
   
   if (filteredItems.length === 0) return [];
   
-  // Separate mains and sides
-  const mains = filteredItems.filter(item => isMainCategory(item.category) && item.protein > 0);
-  const sides = filteredItems.filter(item => isSideCategory(item.category));
+  // Filter out sauces/condiments (very low calorie items)
+  const substantialItems = filteredItems.filter(item => item.calories >= MIN_ITEM_CALORIES);
   
-  // If no clear mains, use all items with protein as potential mains
-  const potentialMains = mains.length > 0 ? mains : filteredItems.filter(i => i.protein > 5);
+  // Separate items by type
+  const sides = substantialItems.filter(item => isSideCategory(item.category));
+  
+  // Main dishes: in main category with good protein density
+  const mains = substantialItems.filter(item => 
+    isMainCategory(item.category) && 
+    calculateProteinDensity(item) >= GOOD_PROTEIN_DENSITY
+  );
+  
+  // Fallback: any item with good protein density (regardless of category)
+  const potentialMains = mains.length > 0 
+    ? mains 
+    : substantialItems.filter(item => calculateProteinDensity(item) >= GOOD_PROTEIN_DENSITY);
+  
+  // Last resort: items with acceptable protein density
+  const fallbackMains = potentialMains.length > 0 
+    ? potentialMains 
+    : substantialItems.filter(item => calculateProteinDensity(item) >= MIN_PROTEIN_DENSITY);
   
   // Pick main: prefer liked items, fallback to highest protein density
   let selectedMain: MenuItem | null = null;
   
-  // First try to find a liked item
+  // First try to find a liked item that meets thresholds
   if (prefs.likedItemIds && prefs.likedItemIds.length > 0) {
     for (const likedId of prefs.likedItemIds) {
-      const liked = potentialMains.find(item => item.id === likedId);
+      const liked = fallbackMains.find(item => item.id === likedId);
       if (liked) {
         selectedMain = liked;
         break;
@@ -188,21 +208,22 @@ function selectMealItemsMVP(
     }
   }
   
-  // Fallback to highest protein density
-  if (!selectedMain && potentialMains.length > 0) {
-    selectedMain = potentialMains.sort((a, b) => calculateProteinDensity(b) - calculateProteinDensity(a))[0];
+  // Fallback: sort by protein density (protein per calorie)
+  if (!selectedMain && fallbackMains.length > 0) {
+    selectedMain = [...fallbackMains].sort((a, b) => 
+      calculateProteinDensity(b) - calculateProteinDensity(a)
+    )[0];
   }
   
   if (!selectedMain) return [];
   
-  // Calculate servings needed to hit ~80% of protein target
-  const targetProtein = targets.protein * 0.8;
-  const servingsNeeded = selectedMain.protein > 0 
-    ? Math.max(1, Math.ceil(targetProtein / selectedMain.protein))
+  // Calculate servings to hit ~75% of meal's protein target
+  const proteinServings = selectedMain.protein > 0 
+    ? Math.ceil((targets.protein * 0.75) / selectedMain.protein)
     : 1;
   
-  // Cap at reasonable amount (max 4 servings)
-  const mainServings = Math.min(servingsNeeded, 4);
+  // Cap servings to reasonable amount
+  const mainServings = Math.min(Math.max(1, proteinServings), 5);
   
   const result: SelectedItem[] = [
     {
@@ -212,19 +233,20 @@ function selectMealItemsMVP(
     }
   ];
   
-  // Add a side if available
+  // Add a side if available (for variety) - prefer protein-dense sides
   if (sides.length > 0) {
-    // Prefer salad or soup
-    const preferredSide = sides.find(s => 
-      s.category.toLowerCase().includes("salad") || 
-      s.category.toLowerCase().includes("soup")
-    ) || sides[0];
+    const sortedSides = [...sides].sort((a, b) => 
+      calculateProteinDensity(b) - calculateProteinDensity(a)
+    );
     
-    result.push({
-      item: preferredSide,
-      servings: 1,
-      displayQuantity: formatServingSize(preferredSide, 1),
-    });
+    const side = sortedSides[0];
+    if (side) {
+      result.push({
+        item: side,
+        servings: 1,
+        displayQuantity: formatServingSize(side, 1),
+      });
+    }
   }
   
   return result;
@@ -376,8 +398,14 @@ export function generateDailySuggestion(
   const calorieShortfall = Math.max(0, prefs.targetCalories - mvpResult.dailyTotals.calories);
   
   let shortfallMessage: string | null = null;
-  if (proteinShortfall > 20) {
+  const caloriePercentage = mvpResult.dailyTotals.calories / prefs.targetCalories;
+  
+  if (caloriePercentage < 0.5) {
+    shortfallMessage = `Only ${Math.round(caloriePercentage * 100)}% of calorie target (${mvpResult.dailyTotals.calories}/${prefs.targetCalories}). Consider adding more substantial dishes.`;
+  } else if (proteinShortfall > 20) {
     shortfallMessage = `You're ${Math.round(proteinShortfall)}g protein short. Consider adding a protein shake or extra eggs.`;
+  } else if (calorieShortfall > 500) {
+    shortfallMessage = `You're ${Math.round(calorieShortfall)} calories short. Consider larger portions or additional snacks.`;
   }
   
   return {
