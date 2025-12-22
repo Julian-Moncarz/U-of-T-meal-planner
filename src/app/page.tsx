@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import MealAccordion from "@/components/MealAccordion";
 import { UserPreferences, MenuItem } from "@/types/menu";
-import { DailySuggestionMVP, SelectedItem, formatServingSize } from "@/lib/suggestions";
+import { DailySuggestion, SelectedItem, formatServingSize } from "@/lib/llmSuggestions";
 
 const DEFAULT_PREFERENCES: UserPreferences = {
   targetCalories: 2500,
@@ -64,7 +64,7 @@ function getStoredPreferences(): UserPreferences | null {
 export default function Home() {
   const router = useRouter();
   const [preferences, setPreferences] = useState<UserPreferences | null>(null);
-  const [suggestion, setSuggestion] = useState<DailySuggestionMVP | null>(null);
+  const [suggestion, setSuggestion] = useState<DailySuggestion | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -117,7 +117,7 @@ export default function Home() {
     );
     
     // Set new suggestion object
-    const newSuggestion: DailySuggestionMVP = {
+    const newSuggestion: DailySuggestion = {
       date: suggestion.date,
       meals: updatedMeals,
       dailyTotals: newDailyTotals,
@@ -169,7 +169,7 @@ export default function Home() {
         }
         
         const data = await response.json();
-        setSuggestion(data as DailySuggestionMVP);
+        setSuggestion(data as DailySuggestion);
         setHasFetchedSuggestions(true);
       } catch (err) {
         setError(err instanceof Error ? err.message : "An error occurred");

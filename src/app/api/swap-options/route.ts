@@ -24,34 +24,18 @@ function containsExcludedProtein(itemName: string, excludedProteins: string[]): 
 
 function filterItems(items: MenuItem[], prefs: UserPreferences, excludeIds: string[]): MenuItem[] {
   return items.filter(item => {
-    // Exclude specific item IDs
     if (excludeIds.includes(item.id)) return false;
-    
-    // Exclude disliked items
     if (prefs.dislikedItemIds?.includes(item.id)) return false;
-    
-    // Dietary filter
     if (prefs.dietaryFilter === "vegetarian" && !item.isVegetarian) return false;
     if (prefs.dietaryFilter === "vegan" && !item.isVegan) return false;
-    
-    // Halal filter
-    if (prefs.isHalal && !item.isHalal) return false;
-    
-    // Allergen filter
+    // Halal: item is safe if explicitly halal OR vegetarian/vegan
+    if (prefs.isHalal && !item.isHalal && !item.isVegetarian && !item.isVegan) return false;
     for (const allergen of prefs.excludedAllergens) {
       if (item.allergens.includes(allergen)) return false;
     }
-    
-    // Excluded proteins filter
     if (containsExcludedProtein(item.name, prefs.excludedProteins)) return false;
-    
     return true;
   });
-}
-
-function calculateProteinDensity(item: MenuItem): number {
-  if (item.calories === 0) return 0;
-  return item.protein / item.calories;
 }
 
 export async function POST(request: Request) {
@@ -64,35 +48,30 @@ export async function POST(request: Request) {
       currentItemId: string;
       preferences: UserPreferences;
     };
-    
+
     if (!mealType || !locationId || !currentItemId || !preferences) {
-      return NextResponse.json(
-        { error: "Missing required fields" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
-    
-    const menu = date 
-      ? await scrapeAllMenusForDate(date)
-      : await scrapeMenuForToday();
-    
+
+    const menu = date ? await scrapeAllMenusForDate(date) : await scrapeMenuForToday();
+
     const location = menu.locations[locationId];
     if (!location || !location.meals[mealType]) {
       return NextResponse.json({ alternatives: [] });
     }
-    
-    const allItems = location.meals[mealType];
-    const filtered = filterItems(allItems, preferences, [currentItemId]);
-    
+
+    const filtered = filterItems(location.meals[mealType], preferences, [currentItemId]);
+
     // Sort by protein density
-    const sorted = filtered.sort((a, b) => calculateProteinDensity(b) - calculateProteinDensity(a));
-    
+    const sorted = filtered.sort((a, b) => {
+      const densityA = a.calories > 0 ? a.protein / a.calories : 0;
+      const densityB = b.calories > 0 ? b.protein / b.calories : 0;
+      return densityB - densityA;
+    });
+
     return NextResponse.json({ alternatives: sorted });
   } catch (error) {
     console.error("Failed to get swap options:", error);
-    return NextResponse.json(
-      { error: "Failed to get swap options" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to get swap options" }, { status: 500 });
   }
 }

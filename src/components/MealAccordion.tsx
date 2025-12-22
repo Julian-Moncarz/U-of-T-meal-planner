@@ -1,14 +1,14 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { MealSuggestionMVP, SelectedItem } from "@/lib/suggestions";
+import { MealSuggestion, SelectedItem } from "@/lib/llmSuggestions";
 import { LOCATIONS, MenuItem, UserPreferences } from "@/types/menu";
 import SwapModal from "./SwapModal";
 
 type MealType = "breakfast" | "lunch" | "dinner";
 
 interface MealAccordionProps {
-  meals: MealSuggestionMVP[];
+  meals: MealSuggestion[];
   locations: {
     breakfast: string;
     lunch: string;
@@ -88,7 +88,7 @@ export default function MealAccordion({ meals, locations, loading, preferences, 
   const mealTypes: MealType[] = ["breakfast", "lunch", "dinner"];
 
   // Create a map for easy lookup
-  const mealMap = new Map<MealType, MealSuggestionMVP>();
+  const mealMap = new Map<MealType, MealSuggestion>();
   for (const meal of meals) {
     mealMap.set(meal.meal, meal);
   }

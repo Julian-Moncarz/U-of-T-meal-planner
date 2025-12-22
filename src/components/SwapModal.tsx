@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { MenuItem, UserPreferences } from "@/types/menu";
-import { SelectedItem } from "@/lib/suggestions";
+import { SelectedItem } from "@/lib/llmSuggestions";
 
 interface SwapModalProps {
   isOpen: boolean;
