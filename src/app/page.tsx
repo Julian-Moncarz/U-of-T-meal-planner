@@ -6,7 +6,7 @@ import MealAccordion from "@/components/MealAccordion";
 import { DecorativeCorner } from "@/components/DecorativeCorner";
 import { UserPreferences } from "@/types/menu";
 import { DailySuggestion } from "@/lib/mealTypes";
-import { getStoredPreferences } from "@/lib/storage";
+import { getStoredPreferences, getCachedSuggestion, cacheSuggestion } from "@/lib/storage";
 
 export default function Home() {
   const router = useRouter();
@@ -15,7 +15,17 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchSuggestions = async (prefs: UserPreferences) => {
+  const fetchSuggestions = async (prefs: UserPreferences, skipCache = false) => {
+    // Check cache first unless explicitly skipped
+    if (!skipCache) {
+      const cached = getCachedSuggestion(prefs);
+      if (cached) {
+        setSuggestion(cached);
+        setLoading(false);
+        return;
+      }
+    }
+
     setLoading(true);
     setError(null);
 
@@ -38,7 +48,9 @@ export default function Home() {
         return;
       }
 
-      setSuggestion(data as DailySuggestion);
+      const suggestionData = data as DailySuggestion;
+      setSuggestion(suggestionData);
+      cacheSuggestion(prefs, suggestionData);
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
