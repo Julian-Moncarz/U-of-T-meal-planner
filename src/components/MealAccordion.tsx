@@ -108,15 +108,17 @@ export default function MealAccordion({ meals, locations, loading }: MealAccordi
                     {sectionTitles[mealType]}
                   </span>
                 </button>
-                <span
-                  className="text-[14px] md:text-[15px] text-[#0D0D0D] opacity-60"
-                  style={{
-                    fontFamily: "var(--font-lato), Arial, sans-serif",
-                    fontWeight: 400,
-                  }}
-                >
-                  at {locationName}
-                </span>
+                {openSections.has(mealType) && (
+                  <span
+                    className="text-[14px] md:text-[15px] text-[#0D0D0D] opacity-60"
+                    style={{
+                      fontFamily: "var(--font-lato), Arial, sans-serif",
+                      fontWeight: 400,
+                    }}
+                  >
+                    at {locationName}
+                  </span>
+                )}
               </div>
             </div>
 
